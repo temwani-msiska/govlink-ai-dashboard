@@ -3,6 +3,7 @@ import os
 from decouple import config
 from datetime import timedelta
 
+
 # Load secret keys from .env file
 SECRET_KEY = config("DJANGO_SECRET_KEY")
 SIGNING_KEY = config("JWT_SIGNING_KEY")
@@ -114,3 +115,4 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
 }
+AUTH_USER_MODEL = 'network.CustomUser'
