@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Navbar from "@/components/navbar";
 import SpeedChart from "@/components/SpeedChart";
 import RoutingMap from "@/components/RoutingMap";
+import { fetchNetworkStatus } from "@/lib/api";
 import {
   networkHealthData,
   aiAlertsData,
@@ -11,10 +13,23 @@ import {
   offlineSyncData,
 } from "@/lib/dummyData";
 
+// Define Type for Network Data
+type NetworkStatus = {
+  service: string;
+  latency: number;
+  packet_loss: number;
+  status: string;
+};
+
 export default function Dashboard() {
+  const [networkData, setNetworkData] = useState<NetworkStatus[]>([]);
+
+  useEffect(() => {
+    fetchNetworkStatus().then((data) => setNetworkData(data));
+  }, []);
+
   return (
     <div className="h-screen w-screen bg-gray-100">
-      {/* Navbar */}
       <Navbar />
 
       {/* Main Dashboard Content */}
@@ -25,10 +40,10 @@ export default function Dashboard() {
           <div className="bg-white p-6 shadow-md rounded-lg">
             <h2 className="text-lg md:text-xl font-semibold">Network Health</h2>
             <ul className="mt-4">
-              {networkHealthData.map((service, index) => (
-                <li key={index} className="flex justify-between text-gray-600 py-2 border-b">
+              {networkData.map((service: NetworkStatus, index: number) => (
+                <li key={index} className="flex justify-between p-2 border-b">
                   <span>{service.service}</span>
-                  <span className={`font-semibold ${service.status === "Down" ? "text-red-500" : service.status === "Slow" ? "text-yellow-500" : "text-green-500"}`}>
+                  <span className={service.status === "Down" ? "text-red-500" : "text-green-500"}>
                     {service.status}
                   </span>
                 </li>
@@ -50,14 +65,12 @@ export default function Dashboard() {
           </div>
         </div>
 
-      
+        {/* Smart Routing & Bandwidth Analytics */}
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-         {/* Smart Routing & Failover Recommendations */}
+          {/* Smart Routing & Failover Recommendations */}
           <div className="bg-white p-6 shadow-md rounded-lg">
-            
-              <h2 className="text-lg md:text-xl font-semibold">Smart Routing & Failover Recommendations</h2>
-              <RoutingMap />
-          
+            <h2 className="text-lg md:text-xl font-semibold">Smart Routing & Failover Recommendations</h2>
+            <RoutingMap />
           </div>
 
           {/* Bandwidth & Performance Analytics with Speed Chart */}
