@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Navbar from "@/components/navbar";
 import SpeedChart from "@/components/SpeedChart";
 import RoutingMap from "@/components/RoutingMap";
@@ -22,11 +23,29 @@ type NetworkStatus = {
 };
 
 export default function Dashboard() {
+  const router = useRouter();
   const [networkData, setNetworkData] = useState<NetworkStatus[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  // Secure authentication check
   useEffect(() => {
-    fetchNetworkStatus().then((data) => setNetworkData(data));
-  }, []);
+    const token = localStorage.getItem("access_token");
+
+    if (!token) {
+      router.push("/login"); // Redirect if no token
+    } else {
+      fetchNetworkStatus().then((data) => setNetworkData(data));
+      setLoading(false); // Stop loading after authentication check
+    }
+  }, [router]);
+
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center text-lg font-semibold">
+        Loading...
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-screen bg-gray-100">
