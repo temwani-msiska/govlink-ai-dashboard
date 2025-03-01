@@ -6,36 +6,34 @@ import Navbar from "@/components/navbar";
 import SpeedChart from "@/components/SpeedChart";
 import RoutingMap from "@/components/RoutingMap";
 import { fetchNetworkStatus } from "@/lib/api";
-import {
-  networkHealthData,
-  aiAlertsData,
-  smartRoutingData,
-  bandwidthAnalyticsData,
-  offlineSyncData,
-} from "@/lib/dummyData";
+import { fetchSimulationData } from "@/lib/api";
 
 // Define Type for Network Data
-type NetworkStatus = {
-  service: string;
-  latency: number;
-  packet_loss: number;
-  status: string;
+type NetworkStatistics = {
+  protocol_distribution: { [key: string]: number };
+  top_sources: { [key: string]: number };
+  top_destinations: { [key: string]: number };
+  average_packet_length: { [key: string]: number };
 };
 
 export default function Dashboard() {
   const router = useRouter();
-  const [networkData, setNetworkData] = useState<NetworkStatus[]>([]);
+  const [networkData, setNetworkData] = useState<NetworkStatistics | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Fetch Simulation Data
+  useEffect(() => {
+    fetchSimulationData().then((data) => {
+      setNetworkData(data);
+      setLoading(false);
+    });
+  }, []);
 
   // Secure authentication check
   useEffect(() => {
     const token = localStorage.getItem("access_token");
-
     if (!token) {
-      router.push("/login"); // Redirect if no token
-    } else {
-      fetchNetworkStatus().then((data) => setNetworkData(data));
-      setLoading(false); // Stop loading after authentication check
+      router.push("/login");
     }
   }, [router]);
 
@@ -53,18 +51,16 @@ export default function Dashboard() {
 
       {/* Main Dashboard Content */}
       <div className="pt-20 px-4 md:px-6">
-        
+
         {/* Network Health Section */}
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white p-6 shadow-md rounded-lg">
-            <h2 className="text-lg md:text-xl font-semibold">Network Health</h2>
+            <h2 className="text-lg md:text-xl font-semibold">Network Protocol Distribution</h2>
             <ul className="mt-4">
-              {networkData.map((service: NetworkStatus, index: number) => (
+              {Object.entries(networkData?.protocol_distribution || {}).map(([protocol, count], index) => (
                 <li key={index} className="flex justify-between p-2 border-b">
-                  <span>{service.service}</span>
-                  <span className={service.status === "Down" ? "text-red-500" : "text-green-500"}>
-                    {service.status}
-                  </span>
+                  <span>{protocol}</span>
+                  <span className="font-semibold text-gray-600">{count}</span>
                 </li>
               ))}
             </ul>
@@ -74,12 +70,15 @@ export default function Dashboard() {
           <div className="bg-white p-6 shadow-md rounded-lg">
             <h2 className="text-lg md:text-xl font-semibold">AI-Powered Alerts & Insights</h2>
             <ul className="mt-4">
-              {aiAlertsData.map((alert) => (
-                <li key={alert.id} className={`py-2 border-b ${alert.severity === "Critical" ? "text-red-500" : alert.severity === "Warning" ? "text-yellow-500" : "text-gray-600"}`}>
-                  <span>{alert.alert}</span>
-                  <span className="text-sm text-gray-400 ml-2">{alert.timestamp}</span>
+              {networkData?.protocol_distribution["ARP"] && networkData.protocol_distribution["ARP"] > 20 ? (
+                <li className="text-red-500 py-2 border-b">
+                  High ARP Requests Detected - Potential Spoofing Activity!
                 </li>
-              ))}
+              ) : (
+                <li className="text-green-500 py-2 border-b">
+                  No suspicious ARP requests detected.
+                </li>
+              )}
             </ul>
           </div>
         </div>
@@ -96,10 +95,10 @@ export default function Dashboard() {
           <div className="bg-white p-6 shadow-md rounded-lg">
             <h2 className="text-lg md:text-xl font-semibold">Bandwidth & Performance Analytics</h2>
             <ul className="mt-4">
-              {bandwidthAnalyticsData.map((data, index) => (
+              {Object.entries(networkData?.average_packet_length || {}).map(([protocol, avgLength], index) => (
                 <li key={index} className="py-2 border-b flex justify-between">
-                  <span>{data.service}</span>
-                  <span className="text-gray-600">{data.usage} (Peak: {data.peakTime})</span>
+                  <span>{protocol}</span>
+                  <span className="text-gray-600">{avgLength.toFixed(2)} bytes</span>
                 </li>
               ))}
             </ul>
@@ -114,14 +113,27 @@ export default function Dashboard() {
         {/* Offline Mode & Sync Status */}
         <div className="mt-6 grid grid-cols-1">
           <div className="bg-white p-6 shadow-md rounded-lg">
-            <h2 className="text-lg md:text-xl font-semibold">Offline Mode & Sync Status</h2>
+            <h2 className="text-lg md:text-xl font-semibold">Top Network Traffic Sources</h2>
             <ul className="mt-4">
-              {offlineSyncData.map((data, index) => (
+              {Object.entries(networkData?.top_sources || {}).map(([source, count], index) => (
                 <li key={index} className="py-2 border-b flex justify-between">
-                  <span>{data.office}</span>
-                  <span className={`font-semibold ${data.syncStatus === "Pending" ? "text-yellow-500" : "text-green-500"}`}>
-                    {data.syncStatus} (Last Sync: {data.lastSync})
-                  </span>
+                  <span>{source}</span>
+                  <span className="text-gray-600">{count} packets</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Top Destinations */}
+        <div className="mt-6 grid grid-cols-1">
+          <div className="bg-white p-6 shadow-md rounded-lg">
+            <h2 className="text-lg md:text-xl font-semibold">Top Network Traffic Destinations</h2>
+            <ul className="mt-4">
+              {Object.entries(networkData?.top_destinations || {}).map(([destination, count], index) => (
+                <li key={index} className="py-2 border-b flex justify-between">
+                  <span>{destination}</span>
+                  <span className="text-gray-600">{count} packets</span>
                 </li>
               ))}
             </ul>

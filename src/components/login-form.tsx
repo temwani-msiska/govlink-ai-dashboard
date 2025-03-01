@@ -56,7 +56,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                 <Input
                   id="email"
                   type="email"
-                  placeholder="your-email@exchange.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -71,11 +70,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
-                <div className="flex justify-center">
-                  <a href="#" className="text-sm text-blue-600 hover:underline">
-                    Forgot your password?
-                  </a>
-                </div>
+          
               </div>
 
               <Button type="submit" className="w-full bg-[#2f68bc]">
