@@ -7,13 +7,16 @@ from django.contrib.auth import authenticate
 from .models import NetworkStatus, CustomUser, BandwidthMetrics
 from .serializers import NetworkStatusSerializer
 from rest_framework.decorators import api_view
+from django.conf import settings
 import openai
+from .network_monitor import RealTimeBandwidth, execute_ping
 import json
 import os
-from .network_monitor import RealTimeBandwidth, execute_ping
+from dotenv import load_dotenv
+import requests
+from openai import OpenAI
 
-# Fetch OpenAI API Key from environment variables
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+load_dotenv()  # Load environment variables
 
 class NetworkStatusList(generics.ListAPIView):
     queryset = NetworkStatus.objects.all()
@@ -39,8 +42,8 @@ class LoginView(APIView):
             print("Error: User not found")  # Debugging
             return Response({"error": "Invalid credentials"}, status=400)
 
-        # Ensure authentication works with email instead of username
-        user = authenticate(request, email=email, password=password)
+        # Authenticate using username (Django expects username, not email)
+        user = authenticate(username=user.username, password=password)
 
         if user:
             refresh = RefreshToken.for_user(user)
@@ -61,7 +64,6 @@ class LoginView(APIView):
         print("Error: Authentication failed")  # Debugging
         return Response({"error": "Invalid credentials"}, status=400)
 
-
 @api_view(['POST'])
 def ask_openai(request):
     try:
@@ -69,31 +71,28 @@ def ask_openai(request):
         if not question:
             return Response({'error': 'Question is required'}, status=400)
 
-        if not OPENAI_API_KEY:
-            return Response({'error': 'OpenAI API key is missing'}, status=500)
+        # AI/ML API configuration - using same setup as travel.py
+        base_url = "https://api.aimlapi.com/v1"
+        api_key = os.getenv('AI_ML_API_KEY')
+        
+        api = OpenAI(api_key=api_key, base_url=base_url)
+        
+        completion = api.chat.completions.create(
+            model="mistralai/Mistral-7B-Instruct-v0.2",
+            messages=[
+                {"role": "system", "content": "You are a network diagnostic assistant. Be descriptive and helpful with network-related questions."},
+                {"role": "user", "content": question},
+            ],
+            temperature=0.7,
+            max_tokens=256,
+        )
 
-        openai.api_key = OPENAI_API_KEY
-
-        try:
-            completion = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that answers questions about network status."},
-                    {"role": "user", "content": question}
-                ]
-            )
-
-            response = completion['choices'][0]['message']['content']
-            return Response({'response': response})
-
-        except openai.error.OpenAIError as e:
-            print(f"OpenAI API Error: {str(e)}")
-            return Response({'error': 'Failed to get response from OpenAI'}, status=500)
-
+        response = completion.choices[0].message.content
+        return Response({'response': response})
+            
     except Exception as e:
-        print(f"Server Error: {str(e)}")
-        return Response({'error': str(e)}, status=500)
-
+        print(f"AI/ML API Error: {str(e)}")
+        return Response({'error': 'Failed to get response from AI service'}, status=500)
 
 @api_view(['GET'])
 def bandwidth_metrics(request):
@@ -105,7 +104,6 @@ def bandwidth_metrics(request):
     } for m in metrics]
     return Response(data)
 
-
 bandwidth_monitor = RealTimeBandwidth()
 
 @api_view(['GET'])
@@ -116,37 +114,34 @@ def real_time_bandwidth(request):
     except Exception as e:
         return Response({'error': str(e)}, status=500)
 
-
 @api_view(['GET'])
 def speed_test(request):
     try:
         speed_data = bandwidth_monitor.get_speed_test()
         if speed_data:
             return Response(speed_data)
-        return Response({'error': 'Speed test failed or no data available'}, status=500)
+        return Response({'error': 'Speed test failed'}, status=500)
     except Exception as e:
         return Response({'error': str(e)}, status=500)
-
 
 @api_view(['POST'])
 def network_action(request):
     action = request.data.get('action')
     ip_address = request.data.get('ip_address')
-
+    
     if action == 'ping':
         if not ip_address:
             return Response({'error': 'IP address is required'}, status=400)
         result = execute_ping(ip_address)
         return Response(result)
-
+    
     elif action == 'topology':
-        if not OPENAI_API_KEY:
-            return Response({'error': 'OpenAI API key is missing'}, status=500)
-
-        openai.api_key = OPENAI_API_KEY
-
         try:
-            completion = openai.ChatCompletion.create(
+            # Get API key from environment variable
+            api_key = os.getenv('OPENAI_API_KEY')
+            client = openai.OpenAI(api_key=api_key)
+            
+            completion = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": """You are a network topology analyzer. 
@@ -164,17 +159,13 @@ def network_action(request):
                     {"role": "user", "content": "Generate a realistic enterprise network topology with core infrastructure, servers, and security devices."}
                 ]
             )
-
-            # Safeguard against invalid JSON responses
-            try:
-                topology_data = json.loads(completion['choices'][0]['message']['content'])
-                return Response({'result': topology_data})
-            except json.JSONDecodeError:
-                print("Error: Invalid JSON received from OpenAI")
-                return Response({'error': 'Invalid topology format received'}, status=500)
-
-        except openai.error.OpenAIError as e:
+            
+            # Parse the response and ensure it's valid JSON
+            topology_data = json.loads(completion.choices[0].message.content)
+            return Response({'result': topology_data})
+            
+        except Exception as e:
             print(f"Topology generation error: {str(e)}")
             return Response({'error': 'Failed to generate network topology'}, status=500)
-
+    
     return Response({'error': 'Invalid action'}, status=400)

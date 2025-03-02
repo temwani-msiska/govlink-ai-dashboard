@@ -3,6 +3,11 @@ import os
 from decouple import config
 from datetime import timedelta
 
+# Load AI/ML API Key
+AI_ML_API_KEY = config("AI_ML_API_KEY", default=None)
+
+if not AI_ML_API_KEY:
+    raise ValueError("🚨 Missing AI_ML_API_KEY in environment variables!")
 
 # Load secret keys from .env file
 SECRET_KEY = config("DJANGO_SECRET_KEY")

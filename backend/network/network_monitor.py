@@ -38,7 +38,11 @@ class NetworkMonitor:
 
 class RealTimeBandwidth:
     def __init__(self):
-        self.speed_test = speedtest.Speedtest()
+        self.speed_test = None
+        try:
+            self.speed_test = speedtest.Speedtest()
+        except Exception as e:
+            print(f"Speed test initialization error: {str(e)}")
     
     def get_network_usage(self):
         # Get network interfaces statistics
@@ -57,6 +61,13 @@ class RealTimeBandwidth:
         }
     
     def get_speed_test(self):
+        if not self.speed_test:
+            try:
+                self.speed_test = speedtest.Speedtest()
+            except Exception as e:
+                print(f"Speed test error: {str(e)}")
+                return None
+
         try:
             print("Getting download speed...")
             download_speed = self.speed_test.download() / 1_000_000  # Convert to Mbps
@@ -73,7 +84,7 @@ class RealTimeBandwidth:
             }
         except Exception as e:
             print(f"Speed test error: {str(e)}")
-            return None 
+            return None
 
 def execute_ping(ip_address, count=4):
     try:
