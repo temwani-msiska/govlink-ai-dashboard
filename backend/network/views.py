@@ -4,13 +4,16 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from .models import NetworkStatus, CustomUser
+from .models import NetworkStatus, CustomUser, BandwidthMetrics
 from .serializers import NetworkStatusSerializer
-import pandas as pd
+from rest_framework.decorators import api_view
+import openai
+import json
 import os
-from django.conf import settings
+from .network_monitor import RealTimeBandwidth, execute_ping
 
-
+# Fetch OpenAI API Key from environment variables
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 class NetworkStatusList(generics.ListAPIView):
     queryset = NetworkStatus.objects.all()
@@ -36,8 +39,8 @@ class LoginView(APIView):
             print("Error: User not found")  # Debugging
             return Response({"error": "Invalid credentials"}, status=400)
 
-        # Authenticate using username (Django expects username, not email)
-        user = authenticate(username=user.username, password=password)
+        # Ensure authentication works with email instead of username
+        user = authenticate(request, email=email, password=password)
 
         if user:
             refresh = RefreshToken.for_user(user)
@@ -58,30 +61,120 @@ class LoginView(APIView):
         print("Error: Authentication failed")  # Debugging
         return Response({"error": "Invalid credentials"}, status=400)
 
-class NetworkSimulationData(APIView):
-    def get(self, request):
-        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "network_data.csv")
 
+@api_view(['POST'])
+def ask_openai(request):
+    try:
+        question = request.data.get('question')
+        if not question:
+            return Response({'error': 'Question is required'}, status=400)
 
-        if not os.path.exists(file_path):
-            return Response({"error": f"File not found at {file_path}"}, status=500)
+        if not OPENAI_API_KEY:
+            return Response({'error': 'OpenAI API key is missing'}, status=500)
+
+        openai.api_key = OPENAI_API_KEY
 
         try:
-            df = pd.read_csv(file_path)
+            completion = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that answers questions about network status."},
+                    {"role": "user", "content": question}
+                ]
+            )
 
-            # Ensure required columns exist
-            required_columns = {"Protocol", "Source", "Destination", "Length"}
-            if not required_columns.issubset(df.columns):
-                return Response({"error": "CSV file is missing required columns"}, status=500)
+            response = completion['choices'][0]['message']['content']
+            return Response({'response': response})
 
-            # Generate structured data for the frontend
-            data = {
-                "protocol_distribution": df["Protocol"].value_counts().to_dict(),
-                "top_sources": df["Source"].value_counts().to_dict(),
-                "top_destinations": df["Destination"].value_counts().to_dict(),
-                "average_packet_length": df.groupby("Protocol")["Length"].mean().to_dict(),
-            }
+        except openai.error.OpenAIError as e:
+            print(f"OpenAI API Error: {str(e)}")
+            return Response({'error': 'Failed to get response from OpenAI'}, status=500)
 
-            return Response(data)
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
+    except Exception as e:
+        print(f"Server Error: {str(e)}")
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+def bandwidth_metrics(request):
+    metrics = BandwidthMetrics.objects.all()
+    data = [{
+        'service': m.service,
+        'usage': m.usage_display(),
+        'peakTime': m.peak_time.strftime('%H:%M')
+    } for m in metrics]
+    return Response(data)
+
+
+bandwidth_monitor = RealTimeBandwidth()
+
+@api_view(['GET'])
+def real_time_bandwidth(request):
+    try:
+        usage_data = bandwidth_monitor.get_network_usage()
+        return Response(usage_data)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+def speed_test(request):
+    try:
+        speed_data = bandwidth_monitor.get_speed_test()
+        if speed_data:
+            return Response(speed_data)
+        return Response({'error': 'Speed test failed or no data available'}, status=500)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+def network_action(request):
+    action = request.data.get('action')
+    ip_address = request.data.get('ip_address')
+
+    if action == 'ping':
+        if not ip_address:
+            return Response({'error': 'IP address is required'}, status=400)
+        result = execute_ping(ip_address)
+        return Response(result)
+
+    elif action == 'topology':
+        if not OPENAI_API_KEY:
+            return Response({'error': 'OpenAI API key is missing'}, status=500)
+
+        openai.api_key = OPENAI_API_KEY
+
+        try:
+            completion = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": """You are a network topology analyzer. 
+                    Generate a realistic network topology with nodes and links. 
+                    Return only valid JSON that matches this structure exactly:
+                    {
+                        "nodes": [
+                            {"id": "string", "type": "string", "label": "string", "status": "string"}
+                        ],
+                        "links": [
+                            {"source": "string", "target": "string", "status": "string"}
+                        ]
+                    }
+                    Include core routers, switches, firewalls, and servers. Make sure all IDs referenced in links exist in nodes."""},
+                    {"role": "user", "content": "Generate a realistic enterprise network topology with core infrastructure, servers, and security devices."}
+                ]
+            )
+
+            # Safeguard against invalid JSON responses
+            try:
+                topology_data = json.loads(completion['choices'][0]['message']['content'])
+                return Response({'result': topology_data})
+            except json.JSONDecodeError:
+                print("Error: Invalid JSON received from OpenAI")
+                return Response({'error': 'Invalid topology format received'}, status=500)
+
+        except openai.error.OpenAIError as e:
+            print(f"Topology generation error: {str(e)}")
+            return Response({'error': 'Failed to generate network topology'}, status=500)
+
+    return Response({'error': 'Invalid action'}, status=400)
