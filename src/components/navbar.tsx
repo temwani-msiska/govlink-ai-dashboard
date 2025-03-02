@@ -41,12 +41,6 @@ export default function Navbar() {
 
       {/* Right Section: Notifications & User Profile */}
       <div className="flex items-center gap-3">
-        {/* Notification Bell */}
-        <button className="relative">
-          <Bell size={20} className="text-white hover:text-gray-300" />
-          <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
-        </button>
-
         {/* User Profile Dropdown */}
         <div className="relative">
           <button onClick={() => setDropdownOpen(!isDropdownOpen)} className="flex items-center gap-2">
