@@ -57,12 +57,6 @@ export default function Navbar() {
           {/* Dropdown Menu */}
           {isDropdownOpen && (
             <div className="absolute right-0 mt-2 w-44 bg-white shadow-md rounded-md p-2">
-              <button className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm hover:bg-gray-100">
-                <User size={16} /> Profile
-              </button>
-              <button className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm hover:bg-gray-100">
-                <Settings size={16} /> Settings
-              </button>
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm text-red-600 hover:bg-gray-100"
